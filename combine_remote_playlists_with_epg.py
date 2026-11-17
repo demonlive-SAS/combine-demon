@@ -17,6 +17,7 @@ PLAYLISTS = [
     "https://github.com/demonlive-SAS/Private-m3u-2/raw/refs/heads/main/Playlists/pxm.m3u", 
     "https://github.com/demonlive-SAS/Private-m3u-2/raw/refs/heads/main/Playlists/s247.m3u",
     "https://github.com/demonlive-SAS/Dancetv-gen/raw/refs/heads/main/dancetv.m3u",
+    "https://github.com/demonlive-SAS/sinclair-fast/raw/refs/heads/main/sinclair.m3u", 
     "https://github.com/demonlive-SAS/Private-m3u-2/raw/refs/heads/main/Playlists/direct.m3u8",
     "https://github.com/demonlive-SAS/buddy_lg/raw/refs/heads/main/lg_channels_us.m3u",
     "https://github.com/demonlive-SAS/plex-fast-channels/raw/refs/heads/main/playlists/plex_us.m3u",
