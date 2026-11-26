@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Combine multiple M3U/M3U8 playlists into one valid, grouped playlist."""
+"""Combine multiple M3U/M3U8 playlists into one valid, grouped, sorted playlist."""
 
 import re
 import sys
@@ -14,9 +14,9 @@ from urllib3.util.retry import Retry
 # ===== CONFIGURATION =====
 PLAYLISTS = [
     "https://github.com/demonlive-SAS/Private-m3u-2/raw/refs/heads/main/Playlists/300rip-wo-events.m3u8",
-    "https://github.com/demonlive-SAS/Private-m3u-2/raw/refs/heads/main/Playlists/rocket300.m3u8", 
-    "https://github.com/demonlive-SAS/fast-bally/raw/refs/heads/main/ballys.m3u", 
-    "https://github.com/demonlive-SAS/EyeTV/raw/refs/heads/main/eye.m3u8", 
+    "https://github.com/demonlive-SAS/Private-m3u-2/raw/refs/heads/main/Playlists/rocket300.m3u8",
+    "https://github.com/demonlive-SAS/fast-bally/raw/refs/heads/main/ballys.m3u",
+    "https://github.com/demonlive-SAS/EyeTV/raw/refs/heads/main/eye.m3u8",
 ]
 
 EPG_URL = "https://github.com/demonlive-SAS/epg-light/raw/refs/heads/main/epgs/light-epg.xml.gz"
@@ -24,12 +24,17 @@ OUTPUT_FILE = "combined_playlist.m3u"
 
 PREFIX_GROUP_WITH_SOURCE = False  # True -> group-title="plex_us | News"
 DEDUPE_BY_URL = True              # drop channels whose stream URL was already added
+SORT_GROUPS = True                # sort groups A-Z (False -> keep first-seen group order)
+SORT_CHANNELS = True              # sort channels A-Z by tvg-name within each group
+NATURAL_SORT = True               # "ESPN 2" before "ESPN 10"
 MAX_WORKERS = 8
 TIMEOUT = 15
 
 # ===== HELPERS =====
 EXTINF_RE = re.compile(r"^(#EXTINF:\s*-?\d+(?:\.\d+)?)(.*)$", re.IGNORECASE)
 GROUP_ATTR_RE = re.compile(r'group-title="([^"]*)"', re.IGNORECASE)
+TVG_NAME_RE = re.compile(r'tvg-name="([^"]*)"', re.IGNORECASE)
+NUM_SPLIT_RE = re.compile(r"(\d+)")
 
 
 def make_session():
@@ -37,7 +42,7 @@ def make_session():
     retry = Retry(total=3, backoff_factor=1, status_forcelist=(429, 500, 502, 503, 504))
     session.mount("https://", HTTPAdapter(max_retries=retry))
     session.mount("http://", HTTPAdapter(max_retries=retry))
-    session.headers["User-Agent"] = "playlist-combiner/2.0"
+    session.headers["User-Agent"] = "playlist-combiner/2.1"
     return session
 
 
@@ -68,8 +73,24 @@ def set_group(extinf, group):
     return extinf
 
 
+def get_sort_name(extinf, url):
+    """tvg-name, falling back to the display name after the last comma, then the URL."""
+    m = TVG_NAME_RE.search(extinf)
+    name = m.group(1).strip() if m else ""
+    if not name and "," in extinf:
+        name = extinf.rsplit(",", 1)[1].strip()
+    return name or url
+
+
+def sort_key(text):
+    text = text.casefold()
+    if not NATURAL_SORT:
+        return (text,)
+    return tuple(int(p) if p.isdigit() else p for p in NUM_SPLIT_RE.split(text))
+
+
 def parse_playlist(lines):
-    """Yield (group, extinf, extra_tag_lines, url) for each channel."""
+    """Return a list of (group, extinf, extra_tag_lines, url) for each channel."""
     channels = []
     sticky_group = None  # from #EXTGRP
     extinf = None
@@ -106,28 +127,37 @@ def parse_playlist(lines):
 
 def build_output(results):
     seen_urls = set()
-    out = [
-        f'#EXTM3U x-tvg-url="{EPG_URL}"',
-        f"# Generated {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
-    ]
-    total = 0
+    groups = {}  # label -> list of (sort_name, extinf, extras, url); insertion-ordered
 
+    # Dedupe in source order (first source wins), then bucket by group across all sources
     for source_name, channels in results:
-        groups = {}
         for group, extinf, extras, url in channels:
             if DEDUPE_BY_URL:
                 if url in seen_urls:
                     continue
                 seen_urls.add(url)
             label = f"{source_name} | {group}" if PREFIX_GROUP_WITH_SOURCE else group
-            groups.setdefault(group, []).append((set_group(extinf, label), extras, url))
+            groups.setdefault(label, []).append(
+                (get_sort_name(extinf, url), set_group(extinf, label), extras, url)
+            )
 
-        for entries in groups.values():
-            for extinf, extras, url in entries:
-                out.append(extinf)
-                out.extend(extras)
-                out.append(url)
-                total += 1
+    labels = sorted(groups, key=sort_key) if SORT_GROUPS else list(groups)
+
+    out = [
+        f'#EXTM3U x-tvg-url="{EPG_URL}"',
+        f"# Generated {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
+    ]
+    total = 0
+
+    for label in labels:
+        entries = groups[label]
+        if SORT_CHANNELS:
+            entries.sort(key=lambda e: sort_key(e[0]))  # stable: ties keep source order
+        for _, extinf, extras, url in entries:
+            out.append(extinf)
+            out.extend(extras)
+            out.append(url)
+            total += 1
 
     return "\n".join(out) + "\n", total
 
