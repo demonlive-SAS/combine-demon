@@ -39,7 +39,7 @@ PLAYLISTS = [
     "https://github.com/demonlive-SAS/buddy_tubi/raw/refs/heads/main/tubi_playlist.m3u",
     "https://github.com/demonlive-SAS/buddy_xumo/raw/refs/heads/main/playlists/xumo_playlist.m3u",
     "https://github.com/demonlive-SAS/fast-bally/raw/refs/heads/main/ballys.m3u", 
-    "", 
+    "https://github.com/demonlive-SAS/EyeTV/raw/refs/heads/main/eye.m3u8", 
 ]
 
 EPG_URL = "https://github.com/demonlive-SAS/epg-light/raw/refs/heads/main/epgs/light-epg.xml.gz"
